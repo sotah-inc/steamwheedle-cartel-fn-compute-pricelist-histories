@@ -92,7 +92,7 @@ func init() {
 	logging.Info("Finished init")
 }
 
-func main() {
+func FnComputePricelistHistories() {
 	r := mux.NewRouter()
 	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		logging.Info("Received request")
