@@ -9,7 +9,6 @@ import (
 	"strconv"
 
 	"cloud.google.com/go/compute/metadata"
-	"github.com/gorilla/mux"
 	"github.com/sirupsen/logrus"
 	"github.com/sotah-inc/steamwheedle-cartel/pkg/act"
 	"github.com/sotah-inc/steamwheedle-cartel/pkg/logging"
@@ -92,56 +91,50 @@ func init() {
 	logging.Info("Finished init")
 }
 
-func FnComputePricelistHistories() {
-	r := mux.NewRouter()
-	r.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		logging.Info("Received request")
+func FnComputePricelistHistories(w http.ResponseWriter, r *http.Request) {
+	logging.Info("Received request")
 
-		body, err := ioutil.ReadAll(r.Body)
-		if err != nil {
-			act.WriteErroneousErrorResponse(w, "Could not read request body", err)
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		act.WriteErroneousErrorResponse(w, "Could not read request body", err)
 
-			logging.WithFields(logrus.Fields{
-				"error": err.Error(),
-			}).Error("Could not read request body")
+		logging.WithFields(logrus.Fields{
+			"error": err.Error(),
+		}).Error("Could not read request body")
+
+		return
+	}
+
+	tuple, err := sotah.NewRegionRealmTimestampTuple(string(body))
+	if err != nil {
+		act.WriteErroneousErrorResponse(w, "Could not parse request body", err)
+
+		logging.WithFields(logrus.Fields{
+			"error": err.Error(),
+		}).Error("Could not parse request body")
+
+		return
+	}
+
+	msg := state.Run(tuple)
+	switch msg.Code {
+	case codes.Ok:
+		w.WriteHeader(http.StatusCreated)
+
+		if _, err := fmt.Fprint(w, msg.Data); err != nil {
+			logging.WithField("error", err.Error()).Error("Failed to return response")
 
 			return
 		}
+	default:
+		act.WriteErroneousMessageResponse(w, "State run code was invalid", msg)
 
-		tuple, err := sotah.NewRegionRealmTimestampTuple(string(body))
-		if err != nil {
-			act.WriteErroneousErrorResponse(w, "Could not parse request body", err)
+		logging.WithFields(logrus.Fields{
+			"code":  msg.Code,
+			"error": msg.Err,
+			"data":  msg.Data,
+		}).Error("State run code was invalid")
+	}
 
-			logging.WithFields(logrus.Fields{
-				"error": err.Error(),
-			}).Error("Could not parse request body")
-
-			return
-		}
-
-		msg := state.Run(tuple)
-		switch msg.Code {
-		case codes.Ok:
-			w.WriteHeader(http.StatusCreated)
-
-			if _, err := fmt.Fprint(w, msg.Data); err != nil {
-				logging.WithField("error", err.Error()).Error("Failed to return response")
-
-				return
-			}
-		default:
-			act.WriteErroneousMessageResponse(w, "State run code was invalid", msg)
-
-			logging.WithFields(logrus.Fields{
-				"code":  msg.Code,
-				"error": msg.Err,
-				"data":  msg.Data,
-			}).Error("State run code was invalid")
-		}
-
-		logging.Info("Sent response")
-	}).Methods("POST")
-	http.Handle("/", r)
-
-	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%d", port), nil))
+	logging.Info("Sent response")
 }
